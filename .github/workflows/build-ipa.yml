@@ -1,0 +1,58 @@
+# 在 GitHub 的云端 Mac 上编译出未签名的 IPA。
+# 触发方式：往 main 分支上传文件时自动运行；也可以在 Actions 页面手动点 "Run workflow"。
+name: Build IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 复制游戏文件到 App 里
+        run: |
+          mkdir -p ios/www
+          cp index.html ios/www/
+          cp -R css js ios/www/
+          ls -R ios/www
+
+      - name: 生成 App 图标
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet pillow
+          .venv/bin/python ios/make_icon.py
+
+      - name: 安装 XcodeGen 并生成工程
+        run: |
+          brew install xcodegen
+          cd ios && xcodegen generate
+
+      - name: 编译（不签名）
+        run: |
+          cd ios
+          xcodebuild -project BaoshiHouse.xcodeproj -scheme BaoshiHouse \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: 打包成 IPA
+        run: |
+          cd ios
+          rm -rf Payload && mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/BaoshiHouse.app Payload/
+          test -f Payload/BaoshiHouse.app/www/index.html
+          test -f Payload/BaoshiHouse.app/www/js/three.min.js
+          zip -qry BaoshiHouse-unsigned.ipa Payload
+          ls -lh BaoshiHouse-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BaoshiHouse-unsigned-ipa
+          path: ios/BaoshiHouse-unsigned.ipa
+          if-no-files-found: error
