@@ -375,8 +375,19 @@
         block(g, new T.ConeGeometry(0.46, 0.6, 4), 0xf2c14e, 0, 1.5, 0).rotation.y = Math.PI / 4;
       } else { top.userData = { x: x, y: y }; tops.push(top); tiles[K(x, y)] = g; }
     }
-    block(sc, new T.CylinderGeometry(0.4, 0.4, 0.05, 8), 0xf6e3b4, L.nest[0], 0.025, L.nest[1]);
-    block(sc, new T.TorusGeometry(0.27, 0.09, 4, 8), 0xc99a6a, L.nest[0], 0.11, L.nest[1]).rotation.x = Math.PI / 2;
+    // 压力板：黄色圆盘，被压住时会沉下去
+    const plates = L.plates.map((p) => block(sc, new T.CylinderGeometry(0.34, 0.38, 0.07, 10), 0xf2c14e, p[0], 0.035, p[1]));
+    // 闸门：一排青色的栅栏，打开时沉进地里
+    const gates = L.gates.map((p) => {
+      const g = new T.Group(); g.position.set(p[0], 0, p[1]); sc.add(g);
+      [-0.3, 0, 0.3].forEach((o) => { block(g, new T.BoxGeometry(0.13, 0.85, 0.13), 0x2f8f9a, o, 0.425, 0); block(g, new T.BoxGeometry(0.13, 0.85, 0.13), 0x2f8f9a, 0, 0.425, o); });
+      block(g, new T.BoxGeometry(0.8, 0.1, 0.8), 0x1f6f7a, 0, 0.88, 0);
+      return g;
+    });
+    // 鸟巢：宝石没拿齐时是灰色的，拿齐后变成金色
+    const nestPad = block(sc, new T.CylinderGeometry(0.4, 0.4, 0.05, 8), 0xf6e3b4, L.nest[0], 0.025, L.nest[1]);
+    const nestRing = block(sc, new T.TorusGeometry(0.27, 0.09, 4, 8), 0xc99a6a, L.nest[0], 0.11, L.nest[1]);
+    nestRing.rotation.x = Math.PI / 2;
     const gems = L.gems.map((g) => {
       const m = block(sc, new T.OctahedronGeometry(0.16, 0), new T.MeshLambertMaterial({ color: 0xbff6ff, emissive: 0x4fc8e8 }), g[0], 0.42, g[1]);
       m.scale.y = 1.4; return m;
@@ -393,9 +404,11 @@
     bird.group.scale.setScalar(0.8); sc.add(bird.group);
 
     lv = { index: index, def: def, pz: pz, L: L, scene: sc, camera: cam, tiles: tiles, tops: tops, gems: gems, crates: crates,
-      bird: bird, anim: null, drops: [], face: Math.PI / 4, done: false, cx: cx, cz: cz };
+      bird: bird, anim: null, drops: [], face: Math.PI / 4, done: false, cx: cx, cz: cz,
+      plates: plates, gates: gates, nestPad: nestPad, nestRing: nestRing };
     $('lvName').textContent = '第 ' + (index + 1) + ' 关 · ' + def.name;
-    $('lvPar').textContent = '（三星 ≤ ' + def.par + '）';
+    $('lvPar').textContent = '（三星 ≤ ' + def.par + ' 步）';
+    $('lvHint').style.opacity = 1;
     $('lvHint').textContent = def.hint;
     syncLevel();
     setView('level');
@@ -418,6 +431,9 @@
       else if (!dropping) g.visible = false;
     });
     lv.gems.forEach((m, i) => { m.visible = !st.got[i]; });
+    const open = lv.pz.nestOpen();
+    lv.nestPad.material.color.setHex(open ? 0xf6e3b4 : 0xa9adb6);
+    lv.nestRing.material.color.setHex(open ? 0xf2a93b : 0x7d8494);
     $('lvGems').textContent = lv.pz.gemsGot();
     $('lvSteps').textContent = st.steps;
   }
@@ -428,7 +444,7 @@
     lv.bird.group.rotation.y = lv.face;
     const before = lv.pz.state, ev = lv.pz.move(dx, dy);
     lv.anim = ev ? { t: 0, dur: 0.3, ev: ev } : { t: 0, dur: 0.22, bump: true };
-    if (ev) { $('lvSteps').textContent = lv.pz.state.steps; if ($('lvHint').textContent && before.steps === 0) $('lvHint').style.opacity = 0.75; }
+    if (ev) { $('lvSteps').textContent = lv.pz.state.steps; if (before.steps === 4) $('lvHint').style.opacity = 0; }
   }
 
   function stepLevel(dt, now) {
@@ -457,9 +473,19 @@
           if (e.collapse) { const g = lv.tiles[K(e.collapse[0], e.collapse[1])]; g.userData.v = 0; lv.drops.push(g); }
           syncLevel();
           if (e.win) winLevel();
+          else if (e.nestOpen) toast('宝石拿齐了，鸟巢打开啦！');
+          else if (e.gates !== undefined) toast(e.gates ? '闸门打开了' : '闸门关上了', 1400);
+          else if (e.to[0] === lv.L.nest[0] && e.to[1] === lv.L.nest[1]) toast('还有宝石没拿，鸟巢还没打开。');
         } else lv.bird.override = null;
       }
     }
+    // 闸门升降、压力板下沉
+    const gk = 1 - Math.exp(-dt * 10), gOpen = lv.pz.gatesOpen(), st = lv.pz.state;
+    lv.gates.forEach((g) => { g.position.y += ((gOpen ? -0.9 : 0) - g.position.y) * gk; });
+    lv.plates.forEach((m, i) => {
+      const p = lv.L.plates[i], down = (st.x === p[0] && st.y === p[1]) || st.crates.some((c) => !c.fell && c.x === p[0] && c.y === p[1]);
+      m.position.y += ((down ? -0.005 : 0.035) - m.position.y) * gk;
+    });
     for (let i = lv.drops.length - 1; i >= 0; i--) { // 塌掉的地砖往下掉
       const g = lv.drops[i];
       g.userData.v += dt * 14; g.position.y -= g.userData.v * dt;
@@ -474,12 +500,12 @@
     lv.face = Math.PI / 4; lv.bird.group.rotation.y = lv.face;
     lv.bird.setState('happy');
     const st = lv.pz.state, got = lv.pz.gemsGot();
-    const stars = 1 + (got === lv.L.gems.length ? 1 : 0) + (st.steps <= lv.def.par ? 1 : 0);
+    const stars = st.steps <= lv.def.par ? 3 : st.steps <= lv.def.par2 ? 2 : 1;
     const r = S.clearLevel(lv.index, LEVEL_IDS, stars);
     const hasNext = lv.index + 1 < LEVELS.length;
     setTimeout(() => {
       let html = '<h2>通关啦！</h2><div class="bigstars">' + starsHtml(stars) + '</div>' +
-        '<div class="note">用了 ' + st.steps + ' 步（三星要求 ' + lv.def.par + ' 步以内），捡到 ' + got + ' / ' + lv.L.gems.length + ' 颗宝石。</div>' +
+        '<div class="note">用了 ' + st.steps + ' 步。三星要 ' + lv.def.par + ' 步以内，两星要 ' + lv.def.par2 + ' 步以内。' + (stars < 3 ? '再走一次，试试更少的步数？' : '走得太漂亮了！') + '</div>' +
         '<div class="rewards"><span>经验 +' + r.xp + '</span><span>💰 金币 +' + r.coins + '</span></div>';
       if (!r.first) html += '<div class="note">这一关以前通过了，奖励减半。</div>';
       r.levelUps.forEach((l) => { html += '<div class="note"><b>升级了！宝石现在是 ' + l + ' 级。</b></div>'; });
