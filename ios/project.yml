@@ -1,0 +1,30 @@
+# XcodeGen 的工程描述：云端 Mac 根据它生成 Xcode 工程
+name: BaoshiHouse
+options:
+  bundleIdPrefix: com.baoshi
+  deploymentTarget:
+    iOS: "15.0"          # 最低支持 iOS / iPadOS 15
+targets:
+  BaoshiHouse:
+    type: application
+    platform: iOS
+    scheme: {}
+    sources:
+      - path: App
+      - path: www          # 游戏的网页文件，由构建流程复制进来，整个文件夹原样打进 App
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.baoshi.house   # App 标识符，以后的版本必须保持不变，覆盖安装才能保留存档
+        PRODUCT_NAME: BaoshiHouse
+        MARKETING_VERSION: "2.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"                 # iPhone 和 iPad
+        INFOPLIST_FILE: Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5.0"
+        CODE_SIGNING_ALLOWED: "NO"                    # 不在云端签名，签名交给爱思助手
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGN_IDENTITY: ""

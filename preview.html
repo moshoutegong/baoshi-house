@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>宝石 · 角色与动作预览</title>
+<style>
+  :root { --bg:#f6f1ea; --card:#fffdf9; --ink:#3f434c; --soft:#8a8f9a; --line:#e6ddd0; --accent:#5c84bf; --accent-ink:#fff; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 20px;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: start; }
+  h1 { grid-column: 1 / -1; margin: 0; font-size: 24px; letter-spacing: .04em; }
+  h1 small { display: block; margin-top: 4px; font-size: 14px; font-weight: 400; color: var(--soft); letter-spacing: 0; }
+  h1 a { color: var(--accent); }
+  .stage { position: sticky; top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 28px; padding: 16px; }
+  .scene { position: relative; aspect-ratio: 1 / 1; border-radius: 20px; overflow: hidden;
+    background: linear-gradient(#245f73 0%, #3f8f8c 55%, #e9b47c 100%); }
+  .scene canvas { display: block; width: 100%; height: 100%; }
+  .status { display: flex; align-items: center; gap: 10px; margin-top: 14px; min-height: 48px; }
+  .pill { flex: none; padding: 6px 14px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 16px; }
+  .tip { font-size: 15px; line-height: 1.5; }
+  .panel { display: grid; gap: 14px; }
+  .group { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 14px; }
+  .group h2 { margin: 0 0 10px; font-size: 14px; color: var(--soft); font-weight: 600; }
+  .btns { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+  button { font: inherit; font-size: 15px; min-height: 46px; padding: 8px 10px; border-radius: 14px; cursor: pointer;
+    border: 1.5px solid var(--line); background: #fff; color: var(--ink); transition: transform .08s, background .15s; }
+  button:active { transform: scale(.96); }
+  button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+  button small { display: block; font-size: 11px; opacity: .7; font-weight: 400; }
+  .sw { display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .sw i { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,.18); }
+  @media (max-width: 760px) {
+    .wrap { grid-template-columns: 1fr; }
+    .stage { top: 8px; z-index: 5; padding: 10px; box-shadow: 0 6px 18px rgba(90, 80, 70, .12); }
+    .scene { aspect-ratio: auto; height: 42vh; }
+    .status { margin-top: 8px; min-height: 40px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>宝石 · 角色与动作预览<small>点右边的按钮切换形态。停在"悠闲"约 25 秒不操作，宝石会自己变成"无聊"。<a href="index.html">进入游戏 →</a></small></h1>
+
+  <div class="stage">
+    <div class="scene" id="scene"></div>
+    <div class="status"><span class="pill" id="label"></span><span class="tip" id="tip"></span></div>
+  </div>
+
+  <div class="panel" id="panel"></div>
+</div>
+
+<script src="js/three.min.js"></script>
+<script src="js/baoshi3d.js"></script>
+<script>
+(function () {
+  const host = document.getElementById('scene');
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  host.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 50);
+  camera.position.set(1.0, 1.9, 6); // 接近正面平视，和原图的角度一致
+  camera.lookAt(0, 0.72, 0);
+
+  // 以均匀的环境光为主，颜色像平涂的插画，不会被阴影压暗
+  scene.add(new THREE.AmbientLight(0xfffaf2, 0.74));
+  const sun = new THREE.DirectionalLight(0xfff6ea, 0.3);
+  sun.position.set(-3, 6, 4);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 1, far: 20 });
+  scene.add(sun);
+
+  const mat = (c) => new THREE.MeshLambertMaterial({ color: c });
+  function box(geo, color, x, y, z) {
+    const g = geo.index ? geo.toNonIndexed() : geo; g.computeVertexNormals();
+    const m = new THREE.Mesh(g, mat(color));
+    m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; scene.add(m);
+    return m;
+  }
+  // 小屋的平台：几何感的阶梯圆台 + 一道拱门
+  // 环境用偏深的暖色，宝石是亮的白色和蓝色，这样主角和背景的明暗、冷暖都拉开
+  box(new THREE.CylinderGeometry(1.45, 1.45, 0.16, 8), 0xd9795f, 0, -0.08, 0).rotation.y = Math.PI / 8;
+  box(new THREE.CylinderGeometry(1.75, 1.75, 0.16, 8), 0xc2624f, 0, -0.24, 0).rotation.y = Math.PI / 8;
+  box(new THREE.CylinderGeometry(1.75, 1.2, 1.6, 8), 0xa94f45, 0, -1.12, 0).rotation.y = Math.PI / 8;
+  box(new THREE.BoxGeometry(0.24, 1.5, 0.24), 0x1f4f63, -0.8, 0.75, -1.0);
+  box(new THREE.BoxGeometry(0.24, 1.5, 0.24), 0x1f4f63, 0.8, 0.75, -1.0);
+  box(new THREE.TorusGeometry(0.8, 0.12, 4, 12, Math.PI), 0x1f4f63, 0, 1.5, -1.0);
+  box(new THREE.BoxGeometry(0.36, 0.5, 0.36), 0xf2c14e, -1.02, 0.25, 0.25);
+  box(new THREE.ConeGeometry(0.2, 0.42, 4), 0x1f4f63, -1.02, 0.71, 0.25).rotation.y = Math.PI / 4;
+  box(new THREE.IcosahedronGeometry(0.15, 0), 0x3fa66b, 1.05, 0.15, 0.45);
+
+  const stateButtons = {};
+  const pet = new Baoshi3D({
+    onState(name, info) {
+      document.getElementById('label').textContent = info.label;
+      document.getElementById('tip').textContent = info.tip;
+      Object.keys(stateButtons).forEach((k) => stateButtons[k].classList.toggle('on', k === name));
+    }
+  });
+  pet.group.rotation.y = 0.16; // 朝向镜头
+  pet.group.scale.setScalar(1.45);
+  scene.add(pet.group);
+  window.pet = pet;
+
+  function resize() {
+    const w = host.clientWidth, h = host.clientHeight, a = w / h;
+    const d = Math.max(1.2, 1.4 / a);
+    camera.left = -d * a; camera.right = d * a; camera.top = d; camera.bottom = -d;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h, false);
+  }
+  new ResizeObserver(resize).observe(host);
+  resize();
+
+  let sim = 0, last = 0;
+  function advance(dt) {
+    sim += dt;
+    pet.update(sim, dt);
+    renderer.domElement.style.filter = pet.pose.sat < 0.99 ? 'saturate(' + pet.pose.sat.toFixed(2) + ')' : '';
+    renderer.render(scene, camera);
+  }
+  function frame(ms) {
+    const dt = Math.min(0.05, (ms - last) / 1000 || 0.016); last = ms;
+    advance(dt);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  window.__step = (seconds) => { for (let i = 0; i < seconds * 60; i++) advance(1 / 60); }; // 调试用：快进
+
+  // ---------- 右侧按钮 ----------
+  const GROUPS = [
+    { title: '互动（完整流程）', items: [
+      { text: '喂食', sub: '啄食 → 满足', run: () => pet.feed() },
+      { text: '玩铃铛', sub: '摇铃 → 开心', run: () => pet.ring() }
+    ]},
+    { title: '日常', items: ['idle', 'bored', 'eat', 'satisfied', 'bell', 'happy'] },
+    { title: '饥饿的六个阶段', items: [
+      ['hungry1', '60'], ['hungry2', '40'], ['hungry3', '20'], ['faint', '10'], ['dying', '5'], ['coma', '0']
+    ]}
+  ];
+  const panel = document.getElementById('panel');
+  function addGroup(title) {
+    const g = document.createElement('div'); g.className = 'group';
+    g.innerHTML = '<h2>' + title + '</h2><div class="btns"></div>';
+    panel.appendChild(g);
+    return g.querySelector('.btns');
+  }
+  GROUPS.forEach((grp) => {
+    const boxEl = addGroup(grp.title);
+    grp.items.forEach((it) => {
+      const b = document.createElement('button');
+      if (it.run) { b.innerHTML = it.text + '<small>' + it.sub + '</small>'; b.onclick = it.run; }
+      else {
+        const name = Array.isArray(it) ? it[0] : it;
+        const sub = Array.isArray(it) ? '<small>饱腹度 ' + it[1] + '</small>' : '';
+        b.innerHTML = Baoshi3D.INFO[name].label + sub;
+        b.onclick = () => pet.setState(name);
+        stateButtons[name] = b;
+      }
+      boxEl.appendChild(b);
+    });
+  });
+  const skins = addGroup('羽毛颜色（升级解锁）');
+  const skinButtons = {};
+  Object.keys(Baoshi3D.PALETTES).forEach((key) => {
+    const pal = Baoshi3D.PALETTES[key];
+    const b = document.createElement('button');
+    b.innerHTML = '<span class="sw"><i style="background:#' + pal.wing.toString(16).padStart(6, '0') + '"></i>' + pal.name + '</span>';
+    b.onclick = () => {
+      pet.setPalette(key);
+      Object.keys(skinButtons).forEach((k) => skinButtons[k].classList.toggle('on', k === key));
+    };
+    skinButtons[key] = b;
+    skins.appendChild(b);
+  });
+  skinButtons.blue.classList.add('on');
+  pet.onState(pet.state, Baoshi3D.INFO[pet.state]);
+})();
+</script>
+</body>
+</html>

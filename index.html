@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>宝石小屋</title>
+<link rel="stylesheet" href="css/game.css">
+</head>
+<body data-view="home">
+<div id="stage"></div>
+
+<!-- 小屋 -->
+<div class="hud" id="homeHud">
+  <div class="top">
+    <div class="chip lv"><b id="lvText">Lv.1</b><span class="bar"><i id="xpBar"></i></span><small id="xpText"></small></div>
+    <div class="chip" title="金币">💰 <b id="coins">0</b></div>
+    <div class="chip" title="探险票">🎫 <b id="tickets">0</b></div>
+    <div class="chip" title="鸟粮">🌾 <b id="food">0</b></div>
+    <div class="chip" title="铃铛">🔔 <b id="bells">0</b></div>
+  </div>
+  <div class="side card">
+    <div class="name">宝石 <span class="pill" id="statusPill"></span></div>
+    <div class="row"><span>饱腹度</span><span class="bar big"><i id="satBar"></i></span><b id="satText"></b></div>
+    <div class="row"><span>亲密度</span><b id="bond">0</b><span class="grow"></span><span>已掌握</span><b id="mastered"></b></div>
+    <div class="tip" id="statusTip"></div>
+    <div class="tip small">👆 左右拖动可以转动宝石</div>
+  </div>
+  <div class="actions" id="actions">
+    <button id="btnFeed"><i>🌾</i>喂食</button>
+    <button id="btnRing"><i>🔔</i>玩铃铛</button>
+    <button id="btnStudy" class="main"><i>📖</i>学习</button>
+    <button id="btnMap" class="main alt"><i>🧭</i>探险</button>
+    <button id="btnSkin"><i>👒</i>装扮</button>
+  </div>
+  <div class="actions" id="rescueBar">
+    <button id="btnRescue" class="main danger"><i>💗</i>开始抢救答题</button>
+  </div>
+</div>
+
+<!-- 闯关 -->
+<div class="hud" id="levelHud">
+  <div class="top">
+    <button class="chip btn" id="btnExit">← 回小屋</button>
+    <div class="chip"><b id="lvName"></b></div>
+    <div class="chip">💎 <b id="lvGems">0</b> / 3</div>
+    <div class="chip">步数 <b id="lvSteps">0</b><small id="lvPar"></small></div>
+  </div>
+  <div class="hint" id="lvHint"></div>
+  <div class="actions">
+    <button id="btnUndo"><i>↩</i>撤销一步</button>
+    <button id="btnRestart"><i>⟲</i>重新开始</button>
+  </div>
+</div>
+
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+<div id="toast"></div>
+
+<script src="js/three.min.js"></script>
+<script src="js/baoshi3d.js"></script>
+<script src="js/store.js"></script>
+<script src="js/questions.js"></script>
+<script src="js/levels.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
