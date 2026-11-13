@@ -1,5 +1,5 @@
 /*
- * 题库（首批 80 题，每科 20 题；后续扩充到每科 100 题以上）。
+ * 题库：这里是每科最早的 20 题，加上补充文件一共 400 多题，每科 100 题以上。
  * 格式：s 科目，q 题目，o 四个选项（第一个永远是正确答案，显示时会打乱顺序），e 解析。
  * 科目：math 数学（苏教版五上） chinese 语文（人教版五上） english 英语（人教版三起五上） science 科学（五上）
  */
@@ -103,9 +103,12 @@
     ]
   };
 
+  // 每科另有 80 题左右放在 q_math.js / q_chinese.js / q_english.js / q_science.js 里，接在这 20 题后面。
+  // 新题只能往后加，不要改动前面题目的顺序，否则孩子的答题记录会对不上。
+  const EXTRA = global.QEXTRA || {};
   const QUESTIONS = [];
   Object.keys(RAW).forEach((s) => {
-    RAW[s].forEach((r, i) => {
+    RAW[s].concat(EXTRA[s] || []).forEach((r, i) => {
       QUESTIONS.push({ id: s[0] + String(i + 1).padStart(3, '0'), s: s, q: r[0], o: r[1], e: r[2] });
     });
   });
