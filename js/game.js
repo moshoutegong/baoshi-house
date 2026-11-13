@@ -90,7 +90,9 @@
     home.scene.add(g); home.house = id;
     applyBackground();
   }
-  function applyBackground() { document.body.style.background = view === 'home' ? HOUSES[home.house || 'coral'].bg : ''; }
+  function applyBackground() {
+    document.body.style.background = view === 'home' ? HOUSES[home.house || 'coral'].bg : (lv ? WORLDS[lv.def.world].theme.bg : '');
+  }
 
   const pet = new Baoshi3D({ palette: S.s.palette });
   pet.group.rotation.y = 0.16; pet.group.scale.setScalar(1.45);
@@ -198,7 +200,7 @@
   }
 
   function openStudy() {
-    let html = '<h2>今天学什么？</h2><div class="sub">每轮 5 题。答对 1 题得 1 份鸟粮，答对 3 题再得 1 张探险票，答对 4 题再得 1 个铃铛。</div><div class="grid2">';
+    let html = '<h2>今天学什么？</h2><div class="sub">每轮 5 题。答对 1 题得 1 份鸟粮，答对 3 题再得 1 张探险票，答对 4 题再得 1 个铃铛，5 题全对再得 1 根提示羽毛（闯关时能看提示）。</div><div class="grid2">';
     Object.keys(SUBJECTS).forEach((k) => {
       const all = QUESTIONS.filter((q) => q.s === k), ok = all.filter((q) => S.s.correct[q.id]).length;
       html += '<button class="subj" data-s="' + k + '" style="border-left-color:' + SUBJECTS[k].color + '"><b>' + SUBJECTS[k].name + '</b><small>已掌握 ' + ok + ' / ' + all.length + '</small></button>';
@@ -216,6 +218,7 @@
       if (r.food) html += '<span>🌾 鸟粮 +' + r.food + '</span>';
       if (r.ticket) html += '<span>🎫 探险票 +1</span>';
       if (r.bell) html += '<span>🔔 铃铛 +1</span>';
+      if (r.hint) html += '<span>💡 提示羽毛 +1</span>';
       if (!r.food) html += '<span>这次没有奖励，再试一次吧</span>';
       html += '</div><div class="note">' + (r.right < RULES.ticketAt ? '答对 ' + RULES.ticketAt + ' 题就能拿到探险票，加油！' : r.right < RULES.bellAt ? '再多答对 1 题就能拿到铃铛。' : '太棒了，奖励全部拿到！') + '</div>' +
         '<div class="foot"><button id="home">回小屋</button><button class="pri" id="again">再来一轮</button></div>';
@@ -326,15 +329,28 @@
   addEventListener('pointercancel', () => { spinDrag = null; });
 
   // ================= 关卡选择 =================
-  function openMap() {
-    let html = '<h2>森林探险</h2><div class="sub">🎫 探险票 ' + S.s.tickets + ' 张　·　今天还能闯 ' + S.runsLeft() + ' 关　·　进一关用 1 张票，同一关失败重来不再扣票。</div><div class="levels">';
+  let mapWorld = 0;
+  const levelNo = (i) => (LEVELS[i].world + 1) + '-' + (LEVELS.filter((l, k) => k <= i && l.world === LEVELS[i].world).length);
+  function openMap(world) {
+    if (typeof world === 'number') mapWorld = world;
+    else LEVELS.forEach((l, i) => { if (S.unlocked(i, LEVEL_IDS)) mapWorld = l.world; });   // 默认打开最新解锁的世界
+    const totalStars = LEVELS.reduce((n, l) => n + (S.s.stars[l.id] || 0), 0);
+    let html = '<h2>探险</h2><div class="sub">🎫 探险票 ' + S.s.tickets + ' 张　·　今天还能闯 ' + S.runsLeft() + ' 关　·　⭐ ' + totalStars + ' / ' + LEVELS.length * 3 +
+      '<br>进一关用 1 张票，同一关失败重来不再扣票。</div><div class="tabs">';
+    WORLDS.forEach((w, k) => {
+      const first = LEVELS.findIndex((l) => l.world === k), open = S.unlocked(first, LEVEL_IDS);
+      html += '<button data-world="' + k + '" class="' + (mapWorld === k ? 'on' : '') + '">' + (open ? w.icon : '🔒') + ' ' + w.name + '</button>';
+    });
+    html += '</div><div class="sub">' + WORLDS[mapWorld].intro + '</div><div class="levels">';
     LEVELS.forEach((l, i) => {
+      if (l.world !== mapWorld) return;
       const open = S.unlocked(i, LEVEL_IDS), st = S.s.stars[l.id] || 0;
-      html += '<button data-i="' + i + '" class="' + (open ? '' : 'locked') + '"><b>' + (open ? i + 1 : '🔒') + '</b><small>' + l.name + '</small><span class="st">' + starsHtml(st) + '</span></button>';
+      html += '<button data-i="' + i + '" class="' + (open ? '' : 'locked') + '"><b>' + (open ? levelNo(i) : '🔒') + '</b><small>' + l.name + '</small><span class="st">' + starsHtml(st) + '</span></button>';
     });
     html += '</div><div class="foot"><button id="close">回小屋</button></div>';
     openSheet(html);
     $('close').onclick = closeSheet;
+    sheet.querySelectorAll('[data-world]').forEach((b) => { b.onclick = () => openMap(+b.dataset.world); });
     sheet.querySelectorAll('.levels button').forEach((b) => {
       b.onclick = () => {
         const i = +b.dataset.i, r = S.enterLevel(i, LEVEL_IDS);
@@ -343,7 +359,7 @@
       };
     });
   }
-  $('btnMap').onclick = openMap;
+  $('btnMap').onclick = () => openMap();
 
   // ================= 闯关场景 =================
   let lv = null;
@@ -351,6 +367,7 @@
 
   function startLevel(index) {
     const def = LEVELS[index], pz = new Puzzle(def.map), L = pz.L, sc = new T.Scene();
+    const th = WORLDS[def.world].theme;
     const cx = (L.w - 1) / 2, cz = (L.h - 1) / 2;
     lights(sc, cx, cz, Math.max(L.w, L.h) + 2, 0.7, 0.42);
     const cam = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
@@ -362,19 +379,36 @@
       if (t === Puzzle.VOID) continue;
       const g = new T.Group(); g.position.set(x, 0, y); sc.add(g);
       const depth = 1.4 + ((x * 7 + y * 13) % 5) * 0.45, light = (x + y) % 2 === 0;
-      block(g, new T.BoxGeometry(1, depth, 1), t === Puzzle.CRACK ? 0x9c6a52 : 0xb5564a, 0, -0.18 - depth / 2, 0);
-      const top = block(g, new T.BoxGeometry(1, 0.18, 1), t === Puzzle.CRACK ? 0xf2d6a2 : (light ? 0xe08568 : 0xd4745a), 0, -0.09, 0);
+      const ice = t === Puzzle.ICE;
+      block(g, new T.BoxGeometry(1, depth, 1), t === Puzzle.CRACK ? th.crackPillar : ice ? 0x7fb4d6 : th.pillar, 0, -0.18 - depth / 2, 0);
+      const top = block(g, new T.BoxGeometry(1, 0.18, 1), t === Puzzle.CRACK ? 0xf2d6a2 : ice ? (light ? 0xdff4fc : 0xcdebf7) : th.top[light ? 0 : 1], 0, -0.09, 0);
+      if (ice) { // 冰面上的反光
+        [[-0.18, 0.5, -0.12], [0.12, 0.3, 0.16]].forEach((c) => { const m = block(g, new T.BoxGeometry(c[1], 0.01, 0.05), 0xffffff, c[0], 0.005, c[2]); m.rotation.y = 0.7; m.castShadow = false; });
+      }
       if (t === Puzzle.CRACK) { // 裂纹
         [[0.02, 0.7, 0.5, 0.1], [-0.2, 0.45, -0.7, -0.08], [0.24, 0.4, -0.3, 0.2]].forEach((c) => {
           const m = block(g, new T.BoxGeometry(c[1], 0.012, 0.045), 0x6b4a3a, c[0], 0.006, c[3]); m.rotation.y = c[2]; m.castShadow = false;
         });
       }
       if (t === Puzzle.WALL) {
-        block(g, new T.BoxGeometry(0.62, 1.1, 0.62), 0x1f4f63, 0, 0.55, 0);
-        block(g, new T.BoxGeometry(0.78, 0.1, 0.78), 0xf2c14e, 0, 1.15, 0);
-        block(g, new T.ConeGeometry(0.46, 0.6, 4), 0xf2c14e, 0, 1.5, 0).rotation.y = Math.PI / 4;
+        block(g, new T.BoxGeometry(0.62, 1.1, 0.62), th.tower, 0, 0.55, 0);
+        block(g, new T.BoxGeometry(0.78, 0.1, 0.78), th.roof, 0, 1.15, 0);
+        block(g, new T.ConeGeometry(0.46, 0.6, 4), th.roof, 0, 1.5, 0).rotation.y = Math.PI / 4;
       } else { top.userData = { x: x, y: y }; tops.push(top); tiles[K(x, y)] = g; }
     }
+    // 传送漩涡：同一对是同一种颜色
+    const PORTAL_COLORS = { 1: 0xb46cf0, 2: 0x2fd3c2, 3: 0xff8a4a };
+    const swirls = [];
+    L.portals.forEach((p) => {
+      [p.a, p.b].forEach((pos) => {
+        const g = new T.Group(); g.position.set(pos[0], 0.03, pos[1]); sc.add(g);
+        const glow = new T.MeshLambertMaterial({ color: PORTAL_COLORS[p.id], emissive: PORTAL_COLORS[p.id], emissiveIntensity: 0.45 });
+        block(g, new T.CylinderGeometry(0.36, 0.36, 0.03, 12), 0x241f3a, 0, 0, 0).castShadow = false;
+        const ring = block(g, new T.TorusGeometry(0.3, 0.07, 5, 14), glow, 0, 0.03, 0); ring.rotation.x = Math.PI / 2;
+        [0, 1, 2].forEach((k) => { const a = k * 2.094; block(g, new T.BoxGeometry(0.2, 0.03, 0.06), glow, Math.cos(a) * 0.13, 0.03, Math.sin(a) * 0.13).rotation.y = -a + 0.9; });
+        swirls.push(g);
+      });
+    });
     // 压力板：黄色圆盘，被压住时会沉下去
     const plates = L.plates.map((p) => block(sc, new T.CylinderGeometry(0.34, 0.38, 0.07, 10), 0xf2c14e, p[0], 0.035, p[1]));
     // 闸门：一排青色的栅栏，打开时沉进地里
@@ -405,8 +439,8 @@
 
     lv = { index: index, def: def, pz: pz, L: L, scene: sc, camera: cam, tiles: tiles, tops: tops, gems: gems, crates: crates,
       bird: bird, anim: null, drops: [], face: Math.PI / 4, done: false, cx: cx, cz: cz,
-      plates: plates, gates: gates, nestPad: nestPad, nestRing: nestRing };
-    $('lvName').textContent = '第 ' + (index + 1) + ' 关 · ' + def.name;
+      plates: plates, gates: gates, nestPad: nestPad, nestRing: nestRing, swirls: swirls, hintLeft: 0 };
+    $('lvName').textContent = '第 ' + levelNo(index) + ' 关 · ' + def.name;
     $('lvPar').textContent = '（三星 ≤ ' + def.par + ' 步）';
     $('lvHint').style.opacity = 1;
     $('lvHint').textContent = def.hint;
@@ -436,37 +470,71 @@
     lv.nestRing.material.color.setHex(open ? 0xf2a93b : 0x7d8494);
     $('lvGems').textContent = lv.pz.gemsGot();
     $('lvSteps').textContent = st.steps;
+    $('hintCount').textContent = '×' + S.s.hints;
   }
+
+  // 提示：用掉一根提示羽毛，告诉孩子接下来的 3 步。如果已经走进死路，会提醒撤销，不扣羽毛。
+  const ARROWS = { R: '↘', L: '↖', D: '↙', U: '↗' };
+  $('btnHint').onclick = () => {
+    if (!lv || lv.anim || lv.done) return;
+    if (S.s.hints <= 0) return toast('没有提示羽毛了。一轮答题 5 题全对，就能得到 1 根。', 3400);
+    const r = lv.pz.hint();
+    if (r.best === null) return toast(r.gaveUp ? '这里太复杂了，先撤销几步再用提示。' : '现在这样已经走不通了，撤销几步再试试。（没有扣提示羽毛）', 3800);
+    S.s.hints--; S.save();
+    lv.hintLeft = 3;
+    $('lvHint').style.opacity = 1;
+    $('lvHint').textContent = '💡 接下来这样走：' + r.path.slice(0, 3).split('').map((c) => ARROWS[c]).join('  ') + '　（离通关还有 ' + r.best + ' 步）';
+    $('hintCount').textContent = '×' + S.s.hints;
+  };
 
   function tryMove(dx, dy) {
     if (!lv || lv.anim || lv.done || isOpen()) return;
     lv.face = Math.atan2(dx, dy);
     lv.bird.group.rotation.y = lv.face;
     const before = lv.pz.state, ev = lv.pz.move(dx, dy);
-    lv.anim = ev ? { t: 0, dur: 0.3, ev: ev } : { t: 0, dur: 0.22, bump: true };
-    if (ev) { $('lvSteps').textContent = lv.pz.state.steps; if (before.steps === 4) $('lvHint').style.opacity = 0; }
+    if (!ev) { lv.anim = { t: 0, dur: 0.22, bump: true }; return; }
+    // 一步的动画分三段：跳一格 → 在冰面上滑（木箱也可能在滑）→ 钻进漩涡
+    const SLIDE = 0.11, crateSlide = ev.push ? ev.push.path.length - 1 : 0;
+    const a = { t: 0, ev: ev, hop: 0.3, slide: SLIDE * Math.max(ev.trail.length, crateSlide), warp: ev.warp ? 0.26 : 0, per: SLIDE };
+    a.dur = a.hop + a.slide + a.warp;
+    lv.anim = a;
+    $('lvSteps').textContent = lv.pz.state.steps;
+    if (lv.hintLeft > 0) { if (--lv.hintLeft === 0) $('lvHint').style.opacity = 0; }
+    else if (before.steps === 4) $('lvHint').style.opacity = 0;
   }
 
   function stepLevel(dt, now) {
     const a = lv.anim;
     if (a) {
-      a.t += dt / a.dur;
-      const k = Math.min(1, a.t), arc = Math.sin(k * Math.PI);
+      a.t += dt;
       if (a.bump) {
+        const arc = Math.sin(Math.min(1, a.t / a.dur) * Math.PI);
         lv.bird.override = { sy: 1 - arc * 0.1, sx: 1 + arc * 0.06, wingL: 12 + arc * 30, wingR: 12 + arc * 30 };
       } else {
-        const e = a.ev;
-        lv.bird.group.position.x = e.from[0] + (e.to[0] - e.from[0]) * k;
-        lv.bird.group.position.z = e.from[1] + (e.to[1] - e.from[1]) * k;
-        lv.bird.override = { y: arc * 0.6, wingL: 12 + arc * 70, wingR: 12 + arc * 70, sy: 1 + arc * 0.08, tail: -arc * 20 };
+        const e = a.ev, t = a.t, bp = lv.bird.group.position;
+        const lerp = (p0, p1, k) => { bp.x = p0[0] + (p1[0] - p0[0]) * k; bp.z = p0[1] + (p1[1] - p0[1]) * k; };
+        const rest = e.trail.length ? e.trail[e.trail.length - 1] : e.first;   // 滑完之后停在哪一格
+        if (t < a.hop) {
+          const k = t / a.hop, arc = Math.sin(k * Math.PI);
+          lerp(e.from, e.first, k);
+          lv.bird.override = { y: arc * 0.6, wingL: 12 + arc * 70, wingR: 12 + arc * 70, sy: 1 + arc * 0.08, tail: -arc * 20 };
+        } else if (e.trail.length && t < a.hop + a.per * e.trail.length) {
+          const f = (t - a.hop) / a.per, i = Math.min(e.trail.length - 1, Math.floor(f));
+          lerp(i === 0 ? e.first : e.trail[i - 1], e.trail[i], Math.min(1, f - i));
+          lv.bird.override = { pitch: -10, wingL: 46, wingR: 46, tail: 14, sy: 0.97 };   // 张开翅膀保持平衡
+        } else if (e.warp && t >= a.dur - a.warp) {
+          const k = (t - (a.dur - a.warp)) / a.warp, s = k < 0.5 ? 1 - k * 1.7 : 0.15 + (k - 0.5) * 1.7;   // 缩小钻进去，再从另一头冒出来
+          lerp(k < 0.5 ? rest : e.warp.to, k < 0.5 ? rest : e.warp.to, 0);
+          lv.bird.override = { sx: s, sy: s, wingL: 30, wingR: 30 };
+        } else { lerp(rest, rest, 0); lv.bird.override = null; }
         if (e.push) {
-          const g = lv.crates[e.push.i], p = e.push;
+          const g = lv.crates[e.push.i], p = e.push, k = Math.min(1, t / (a.hop + a.per * (p.path.length - 1)));
           g.position.x = p.from[0] + (p.to[0] - p.from[0]) * k;
           g.position.z = p.from[1] + (p.to[1] - p.from[1]) * k;
-          if (p.fell) g.position.y = 0.34 - Math.max(0, k - 0.55) / 0.45 * 0.68;
+          if (p.fell) g.position.y = 0.34 - Math.max(0, k - 0.7) / 0.3 * 0.68;
         }
       }
-      if (a.t >= 1) {
+      if (a.t >= a.dur) {
         lv.anim = null;
         if (!a.bump) {
           const e = a.ev;
@@ -492,6 +560,7 @@
       if (g.position.y < -9) { g.visible = false; lv.drops.splice(i, 1); }
     }
     lv.gems.forEach((m, i) => { m.rotation.y = now * 1.6 + i; m.position.y = 0.42 + Math.sin(now * 2.4 + i) * 0.05; });
+    lv.swirls.forEach((g, i) => { g.rotation.y = now * 2.2 + i; });
     lv.bird.update(now, dt);
   }
 
@@ -502,14 +571,15 @@
     const st = lv.pz.state, got = lv.pz.gemsGot();
     const stars = st.steps <= lv.def.par ? 3 : st.steps <= lv.def.par2 ? 2 : 1;
     const r = S.clearLevel(lv.index, LEVEL_IDS, stars);
-    const hasNext = lv.index + 1 < LEVELS.length;
+    const hasNext = lv.index + 1 < LEVELS.length, wonLv = lv;
     setTimeout(() => {
+      if (lv !== wonLv) return;   // 结算弹出前已经离开这一关了
       let html = '<h2>通关啦！</h2><div class="bigstars">' + starsHtml(stars) + '</div>' +
         '<div class="note">用了 ' + st.steps + ' 步。三星要 ' + lv.def.par + ' 步以内，两星要 ' + lv.def.par2 + ' 步以内。' + (stars < 3 ? '再走一次，试试更少的步数？' : '走得太漂亮了！') + '</div>' +
         '<div class="rewards"><span>经验 +' + r.xp + '</span><span>💰 金币 +' + r.coins + '</span></div>';
       if (!r.first) html += '<div class="note">这一关以前通过了，奖励减半。</div>';
       r.levelUps.forEach((l) => { html += '<div class="note"><b>升级了！宝石现在是 ' + l + ' 级。</b></div>'; });
-      r.skins.forEach((k) => { html += '<div class="note"><b>解锁了新羽毛：' + Baoshi3D.PALETTES[k].name + '！</b>回小屋点"羽毛"就能换上。</div>'; });
+      r.skins.forEach((k) => { html += '<div class="note"><b>解锁了新羽毛：' + Baoshi3D.PALETTES[k].name + '！</b>回小屋点"装扮"就能换上。</div>'; });
       html += '<div class="foot"><button id="back">回小屋</button><button id="replay">再走一次</button>' + (hasNext ? '<button class="pri" id="next">下一关</button>' : '') + '</div>';
       openSheet(html);
       $('back').onclick = () => { closeSheet(); exitLevel(); };
@@ -605,6 +675,6 @@
   requestAnimationFrame(frame);
 
   // 调试和测试用
-  window.__game = { S: S, pet: pet, step: (sec) => { for (let i = 0; i < sec * 60; i++) advance(1 / 60); }, move: tryMove,
+  window.__game = { S: S, pet: pet, step: (sec, hz) => { const n = Math.max(1, Math.round(sec * (hz || 60))); for (let i = 0; i < n; i++) advance(sec / n); }, move: tryMove,
     level: () => lv, startLevel: startLevel, home: home, refresh: () => { refreshHud(); syncPet(); } };
 })();

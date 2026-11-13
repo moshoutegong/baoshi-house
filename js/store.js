@@ -28,6 +28,7 @@
   function fresh() {
     return { v: 2, satiety: 50, food: 2, bells: 1, bond: 0, tickets: 1, xp: 0, coins: 0, level: 1,
       lastTick: Date.now(), correct: {}, stars: {}, daily: { date: today(), runs: 0 }, palette: 'blue',
+      hints: 3,                                                 // 提示羽毛：闯关时看接下来 3 步
       owned: {}, outfit: { hat: '', glasses: '', neck: '' },   // 买到的服饰、现在穿戴的
       houses: { coral: 1 }, house: 'coral' };                   // 买到的小屋、现在用的
   }
@@ -108,8 +109,9 @@
       const s = this.s;
       const right = results.filter((r) => r.ok).length;
       results.forEach((r) => { if (r.ok) s.correct[r.id] = 1; });
-      const out = { right: right, food: right, bell: right >= RULES.bellAt ? 1 : 0, ticket: right >= RULES.ticketAt ? 1 : 0 };
-      s.food += out.food; s.bells += out.bell; s.tickets += out.ticket;
+      const out = { right: right, food: right, bell: right >= RULES.bellAt ? 1 : 0, ticket: right >= RULES.ticketAt ? 1 : 0,
+        hint: results.length >= 5 && right === results.length ? 1 : 0 };   // 一轮全对，再得 1 根提示羽毛
+      s.food += out.food; s.bells += out.bell; s.tickets += out.ticket; s.hints += out.hint;
       this.save();
       return out;
     },
